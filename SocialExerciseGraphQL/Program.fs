@@ -35,10 +35,15 @@ let QueryRoot = Define.Object("Query", [
 // then initialize everything as part of schema
 let schema = Schema(QueryRoot)
 
+let executor = Executor(schema)
+
+let getString (rawForm : byte[]) =
+    System.Text.Encoding.UTF8.GetString(rawForm)
+
 let app =
     choose
       [ GET >=> path "/" >=> OK "Hello Get"
-        POST >=> path "/graphql" >=> OK "Hello Post" ]
+        POST >=> path "/graphql" >=> request( fun r-> OK (r.rawForm |> getString))]
         
 [<EntryPoint>]
 let main argv =
