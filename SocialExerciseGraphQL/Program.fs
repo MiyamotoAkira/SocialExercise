@@ -8,6 +8,9 @@ open Suave.Operators
 open Suave.Successful
 open FSharp.Data.GraphQL
 open FSharp.Data.GraphQL.Types
+open FSharp.Data.GraphQL.Execution
+open Newtonsoft.Json
+open Newtonsoft.Json.Linq
 
 type Message =
     { message: string
@@ -37,13 +40,33 @@ let schema = Schema(QueryRoot)
 
 let executor = Executor(schema)
 
-let getString (rawForm : byte[]) =
-    System.Text.Encoding.UTF8.GetString(rawForm)
+let removeWhitespacesAndLineBreaks (data : string) =
+    data.Trim().Replace("\r\n", " ") 
+
+let getQuery (rawForm : byte[]) =
+    let body = System.Text.Encoding.UTF8.GetString(rawForm) |> removeWhitespacesAndLineBreaks
+    printfn "%s" body
+    match body.Contains("people") with
+    | true -> let value = body |> JToken.Parse
+              value.Value<string>("query") |> Some
+    | _ -> None
+    
+let serialize =
+    function
+    | Direct (data, _) -> JsonConvert.SerializeObject(data)
+    | _ -> ""
+
+let executeSchemaQuery (query : string option) =
+    match query with
+    | Some x -> x  |> executor.AsyncExecute |> Async.RunSynchronously
+    | None -> Introspection.IntrospectionQuery |> executor.AsyncExecute |> Async.RunSynchronously
 
 let app =
     choose
       [ GET >=> path "/" >=> OK "Hello Get"
-        POST >=> path "/graphql" >=> request( fun r-> OK (r.rawForm |> getString))]
+        POST >=> choose
+            [ path "/graphql" >=> request ( fun r-> OK (r.rawForm |> getQuery |> executeSchemaQuery |> serialize))
+              path "/test" >=> request (fun r-> OK (System.Text.Encoding.UTF8.GetString(r.rawForm) |> removeWhitespacesAndLineBreaks ))]]
         
 [<EntryPoint>]
 let main argv =
