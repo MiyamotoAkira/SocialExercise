@@ -12,16 +12,26 @@ open Newtonsoft.Json.Linq
 
 // SCHEMA
 type Message =
-    { message: string
-      time: DateTime}
+    { Id: string
+      Message: string
+      Time: DateTime
+      Writer: string}
 
+type Pictures =
+    { Id: string
+      Name: string
+      Owner: string
+      Tagged: string list option}
+    
 type Person =
-    { FirstName : string;
-      LastName : string}
+    { Id: string
+      FirstName : string
+      LastName : string
+      Friends: string list option}
 
 let people = [ 
-    { FirstName = "Jane"; LastName = "Milton" }
-    { FirstName = "Travis"; LastName = "Smith" } ]
+    { Id = "100"; FirstName = "Jane"; LastName = "Milton"; Friends = None }
+    { Id = "101"; FirstName = "Travis"; LastName = "Smith"; Friends = Some ["100"] } ]
 
 // GraphQL type definition for Person type
 let Person = Define.Object("Person", [
