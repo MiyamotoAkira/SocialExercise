@@ -33,15 +33,42 @@ let people = [
     { Id = "100"; FirstName = "Jane"; LastName = "Milton"; Friends = None }
     { Id = "101"; FirstName = "Travis"; LastName = "Smith"; Friends = Some ["100"] } ]
 
+let messages = [
+    { Id = "1"; Message = "A message"; Time = DateTime(2018,12,12); Writer = "100"}
+    { Id = "2"; Message = "A message 2"; Time = DateTime(2018,12,12); Writer = "101"}
+    ]
+
+let pictures = [
+    { Id = "1001"; Name = "A picture"; Owner = "100"; Tagged = Some ["100"; "101"]}
+    ]
+
+let getPerson id = people |> List.tryFind (fun p -> p.Id = id)
+
+let getMessage id = messages |> List.tryFind (fun m -> m.Id = id)
+
+let getPicture id = pictures |> List.tryFind (fun  p -> p.Id = id)
+
+let extractFriends person =
+    match person.Friends with
+    | Some x -> x |> List.map getPerson |> List.toSeq
+    | None -> Seq.empty
+
 // GraphQL type definition for Person type
-let Person = Define.Object("Person", [
-    Define.Field("firstName", String, fun ctx p -> p.FirstName)
-    Define.Field("lastName", String, fun ctx p -> p.LastName)  
+let rec PersonType =
+    Define.Object("Person",
+        fieldsFn = fun() ->
+        [
+            Define.Field("id", String, fun ctx p -> p.Id)
+            Define.Field("firstName", String, fun ctx p -> p.FirstName)
+            Define.Field("lastName", String, fun ctx p -> p.LastName)  
+            Define.Field("friends", ListOf (Nullable PersonType), fun _ p -> extractFriends p)
 ])
+
+
 
 // each schema must define so-called root query
 let QueryRoot = Define.Object("Query", [
-    Define.Field("people", ListOf Person, fun ctx () -> people)
+    Define.Field("people", ListOf PersonType, fun ctx () -> people)
 ])
 
 // then initialize everything as part of schema
