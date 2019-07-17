@@ -1,6 +1,4 @@
-﻿// Learn more about F# at http://fsharp.org
-
-open System
+﻿open System
 open System.Threading
 open Suave
 open Suave.Filters
@@ -12,6 +10,7 @@ open FSharp.Data.GraphQL.Execution
 open Newtonsoft.Json
 open Newtonsoft.Json.Linq
 
+// SCHEMA
 type Message =
     { message: string
       time: DateTime}
@@ -40,8 +39,8 @@ let schema = Schema(QueryRoot)
 
 let executor = Executor(schema)
 
-let removeWhitespacesAndLineBreaks (data : string) =
-    data.Trim().Replace("\r\n", " ") 
+// RESOLUTION
+let removeWhitespacesAndLineBreaks (data : string) = data.Trim().Replace("\r\n", " ") 
 
 let getQuery (rawForm : byte[]) =
     let body = System.Text.Encoding.UTF8.GetString(rawForm) |> removeWhitespacesAndLineBreaks
@@ -64,9 +63,7 @@ let executeSchemaQuery (query : string option) =
 let app =
     choose
       [ GET >=> path "/" >=> OK "Hello Get"
-        POST >=> choose
-            [ path "/graphql" >=> request ( fun r-> OK (r.rawForm |> getQuery |> executeSchemaQuery |> serialize))
-              path "/test" >=> request (fun r-> OK (System.Text.Encoding.UTF8.GetString(r.rawForm) |> removeWhitespacesAndLineBreaks ))]]
+        POST >=> path "/graphql" >=> request ( fun r-> OK (r.rawForm |> getQuery |> executeSchemaQuery |> serialize))]
         
 [<EntryPoint>]
 let main argv =
