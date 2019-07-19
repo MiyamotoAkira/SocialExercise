@@ -1,14 +1,20 @@
 ﻿open System
+open System.IO
 open System.Threading
-open Suave
-open Suave.Filters
-open Suave.Operators
-open Suave.Successful
+open Microsoft.AspNetCore
+open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Hosting
+open Microsoft.Extensions.DependencyInjection
+open Microsoft.AspNetCore.Http
+open Microsoft.Extensions.Logging
+open Giraffe
+open Giraffe.HttpStatusCodeHandlers.Successful
 open FSharp.Data.GraphQL
 open FSharp.Data.GraphQL.Types
 open FSharp.Data.GraphQL.Execution
 open Newtonsoft.Json
 open Newtonsoft.Json.Linq
+open FSharp.Control.Tasks
 
 // SCHEMA
 type Message =
@@ -72,6 +78,7 @@ let rec PersonType =
          Define.Field("lastName", String, fun ctx p -> p.LastName)  
          Define.Field("friends", ListOf (Nullable PersonType), fun _ p -> locatePeople p.Friends)
          Define.Field("message", ListOf (Nullable MessageType), fun _ p -> locateMessages p.Messages)])
+
 and MessageType =
     Define.Object<Message>(
         name = "Message",
@@ -106,36 +113,63 @@ let executor = Executor(schema)
 // RESOLUTION
 let removeWhitespacesAndLineBreaks (data : string) = data.Trim().Replace("\r\n", " ") 
 
-let getQuery (rawForm : byte[]) =
-    let body = System.Text.Encoding.UTF8.GetString(rawForm) |> removeWhitespacesAndLineBreaks
+let getQuery body =
     let value = body |> JToken.Parse
     value.Value<string>("query") |> Some
     
-let serialize =
+let extractResponse =
     function
-    | Direct (data, _) -> JsonConvert.SerializeObject(data)
-    | _ -> ""
+    | Direct (data, _) -> data
+    | _ -> null
 
-let executeSchemaQuery (query : string option) =
-    match query with
-    | Some x -> x  |> executor.AsyncExecute |> Async.RunSynchronously
-    | None -> Introspection.IntrospectionQuery |> executor.AsyncExecute |> Async.RunSynchronously
+let executeSchemaQuery  =
+    fun (next : HttpFunc) (ctx : HttpContext) ->
+        task {
+            let! body = ctx.ReadBodyFromRequestAsync()
+            let query = getQuery body
+            let! result = 
+              match query with
+              | Some x -> x  |> executor.AsyncExecute
+              | None -> Introspection.IntrospectionQuery |> executor.AsyncExecute              
+            return! json (extractResponse result) next ctx
+        }
 
-let app =
+let webApp =
     choose
-      [ GET >=> path "/" >=> OK "Hello Get"
-        POST >=> path "/graphql" >=> request ( fun r-> OK (r.rawForm |> getQuery |> executeSchemaQuery |> serialize))]
-        
+      [ GET >=> route "/" >=> OK "Hello Get"
+        POST >=> route "/graphql" >=> executeSchemaQuery]
+
+//Giraffe setup
+let errorHandler (ex : Exception) (logger : ILogger) =
+    logger.LogError(EventId(), ex, "An unhandled exception has occurred while executing the request.")
+    clearResponse >=> setStatusCode 500 >=> text ex.Message
+
+let configureApp (app : IApplicationBuilder) =
+    app.UseGiraffeErrorHandler(errorHandler)
+       .UseGiraffe webApp
+
+let configureServices (services : IServiceCollection) =
+    services
+    |> fun s -> s.AddGiraffe() 
+    |> ignore
+
+let configureLogging (builder:ILoggingBuilder) = 
+  builder.AddFilter(fun lvl -> lvl = LogLevel.Information)
+         .AddConsole()
+         |> ignore
+
 [<EntryPoint>]
 let main argv =
-    let cts = new CancellationTokenSource()
-    let conf = { defaultConfig with cancellationToken = cts.Token }
-    let listening, server = startWebServerAsync conf app 
+    let contentRoot = Directory.GetCurrentDirectory()
+    let webRoot     = Path.Combine(contentRoot, "WebRoot")
     
-    Async.Start(server, cts.Token)
-    printfn "Make requests now"
-    Console.ReadKey true |> ignore
+    WebHost.CreateDefaultBuilder(argv)
+        .Configure(Action<IApplicationBuilder> configureApp)
+        .ConfigureServices(Action<IServiceCollection> configureServices)
+        .ConfigureLogging(configureLogging)
+        .UseWebRoot(webRoot)
+        .Build()
+        .Run()
     
-    cts.Cancel()
 
     0 // return an integer exit code

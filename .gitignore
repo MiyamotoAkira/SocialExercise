@@ -1,5 +1,8 @@
 **/obj/
 **/bin/
 paket-files/
+.ionide/
 .paket/
+!.paket/*.exe
+
 packages/
